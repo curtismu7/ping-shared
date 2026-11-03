@@ -21,8 +21,8 @@ jobs:
         with: { node-version: 26 }
       - name: unknown product answers exit 2, usage lists products
         run: |
-          set -e
-          node probe.mjs not-a-product 2>/dev/null; code=$?
+          node probe.mjs not-a-product 2>/dev/null && { echo "unknown product should not exit 0"; exit 1; } || code=$?
           test "$code" = "2" || { echo "expected exit 2 for unknown product, got $code"; exit 1; }
-          node probe.mjs 2>/dev/null; code=$?
+          node probe.mjs 2>/dev/null && { echo "missing product should not exit 0"; exit 1; } || code=$?
           test "$code" = "2" || { echo "expected exit 2 for missing product, got $code"; exit 1; }
+          echo "probe contract ok"
