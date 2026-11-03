@@ -1,0 +1,23 @@
+# ping-shared — one shared instance per host of the Ping products that standalones
+# need (rule 20 in ~/Development/STANDALONE-RULES.md). Labs join the external
+# `ping-shared` network and reuse these instances; they never ship their own.
+#
+# Adopted (already running, not owned by this compose project):
+#   PingFederate: container ai-demo-pingfederate, admin 9999, runtime 9031
+#     (from AI-DEMO2 scripts/pingfederate/docker-compose.local.yml, profile at
+#     ~/pingfederate-profile). This compose project does NOT start a second PF.
+#
+# Started here:
+#   (products below are stubs until a first consumer needs them — add per product
+#   with the same shape: loopback ports, ping-shared network, product + health labels)
+#
+# Probe convention (rule 20 step 2): a product is "shared and healthy" when
+#   docker label io.ping-shared.product == <name> and its health endpoint answers.
+# Consumers log "using shared <product> at <host:port>" and never start their own.
+
+name: ping-shared
+
+networks:
+  ping-shared:
+    name: ping-shared
+    external: false
