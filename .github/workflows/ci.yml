@@ -1,0 +1,28 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  probe-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: 26 }
+      - name: unknown product answers exit 2, usage lists products
+        run: |
+          set -e
+          node probe.mjs not-a-product 2>/dev/null; code=$?
+          test "$code" = "2" || { echo "expected exit 2 for unknown product, got $code"; exit 1; }
+          node probe.mjs 2>/dev/null; code=$?
+          test "$code" = "2" || { echo "expected exit 2 for missing product, got $code"; exit 1; }
