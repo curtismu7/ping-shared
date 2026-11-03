@@ -54,6 +54,98 @@ const HEALTH = {
     urlFromEnv: (env) => env.PRIVILEGE_CONSOLE_URL || 'https://console.privilege.pingone.com/',
     ok: [200, 302, 401, 403],
   },
+  // ── AI-DEMO2 MCP / resource-server stack (rule 20: adopted, never re-spawned) ──
+  // These are enforcement/data-plane services another demo may already run. Any HTTP answer
+  // (200/401/404/405) proves the endpoint is up; auth challenges are healthy by definition.
+  'mcp-server': {
+    container: 'ai-demo-mcp-server',
+    url: 'http://127.0.0.1:8080/',
+    port: 8080,
+    ok: [200, 401, 404, 405],
+  },
+  'mcp-gateway': {
+    container: 'ai-demo-mcp-gateway',
+    url: 'http://127.0.0.1:3005/health',
+    port: 3005,
+    ok: [200, 401, 404, 405],
+  },
+  'mcp-resource-server': {
+    // Loopback-only publish; the token-protected API for the MCP tool calls.
+    container: 'ai-demo-mcp-resource-server',
+    url: 'http://127.0.0.1:8081/',
+    port: 8081,
+    ok: [200, 401, 404, 405],
+  },
+  'mcp-jwt-verifier': {
+    container: 'ai-demo-mcp-jwt-verifier',
+    url: 'http://127.0.0.1:8083/health',
+    port: 8083,
+    ok: [200, 401, 404, 405],
+  },
+  'api-resource-server': {
+    // The banking API the demos call (loopback 8082).
+    container: 'ai-demo-api-resource-server',
+    url: 'http://127.0.0.1:8082/health',
+    port: 8082,
+    ok: [200, 401, 404, 405],
+  },
+  'authz-server': {
+    container: 'ai-demo-authz-server',
+    url: 'http://127.0.0.1:9001/health',
+    port: 9001,
+    ok: [200, 401, 404, 405],
+  },
+  'mcp-proxy': {
+    container: 'ai-demo-mcp-proxy',
+    url: 'http://127.0.0.1:8895/',
+    port: 8895,
+    ok: [200, 401, 404, 405],
+  },
+  'mcp-audit': {
+    container: 'ai-demo-mcp-audit',
+    url: 'http://127.0.0.1:8898/',
+    port: 8898,
+    ok: [200, 401, 404, 405],
+  },
+  'llm-proxy': {
+    // The local LLM proxy: a shared model endpoint for any lab's Real mode.
+    container: 'ai-demo-llm-proxy',
+    url: 'http://127.0.0.1:8090/health',
+    port: 8090,
+    ok: [200, 401, 404, 405],
+  },
+  'mcp-code-search': {
+    container: 'ai-demo-mcp-code-search',
+    url: 'http://127.0.0.1:8095/',
+    port: 8095,
+    ok: [200, 401, 404, 405],
+  },
+  'opensearch-mcp-server': {
+    container: 'ai-demo-opensearch-mcp-server',
+    url: 'http://127.0.0.1:9900/',
+    port: 9900,
+    ok: [200, 401, 404, 405],
+  },
+  'mcp-weather': {
+    container: 'ai-demo-mcp-weather',
+    url: 'http://127.0.0.1:8896/',
+    port: 8896,
+    ok: [200, 401, 404, 405],
+  },
+  'mcp-brave': {
+    container: 'ai-demo-mcp-brave',
+    url: 'http://127.0.0.1:8897/',
+    port: 8897,
+    ok: [200, 401, 404, 405],
+  },
+  'bff': {
+    // The BFF (demo_api_server): session custodian and OAuth client for the demo UI.
+    // TLS-terminated at the container (https on 3001; plain http answers nothing).
+    container: 'ai-demo-api-server',
+    url: 'https://local.ping-devops.com:3001/api/health',
+    port: 3001,
+    ok: [200],
+  },
 };
 
 function get(url) {

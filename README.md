@@ -9,9 +9,23 @@ labs never ship their own; they probe and reuse these.
 |---|---|---|---|
 | `pingfederate` | `https://127.0.0.1:9031/pf/heartbeat.ping` | 200 | adopted: AI-DEMO2 `ai-demo-pingfederate` (admin 9999, runtime 9031 via shim) |
 | `pinggateway` | `https://127.0.0.1:3036/mcp` | 200/401/405 | adopted: AI-DEMO2 `ai-demo-ping-gateway` (401 = enforcement point up) |
-| `privilege-gateway` | `http://127.0.0.1:8623/` | 200 | adopted: AI-DEMO2 `ai-demo-ping-mcpgw` (procyon MCP listener) |
+| `privilege-gateway` | `http://127.0.0.1:8623/` | 200 | adopted: AI-DEMO2 `ai-demo-ping-mcpgw` (procyon MCP listener; profile `mcpgw`) |
 | `pingone` | `https://auth.pingone.<region>/<env>/as/.well-known/openid-configuration` | 200 | SaaS; env id + region from the shared env file |
 | `pingone-privilege` | `PRIVILEGE_CONSOLE_URL` (default `https://console.privilege.pingone.com/`) | 200/302/401/403 | SaaS console; users point at their own tenant — ping-shared never ships it |
+| `mcp-server` | `http://127.0.0.1:8080/` | 200/401/404/405 | adopted: AI-DEMO2 `ai-demo-mcp-server` (the MCP tool server) |
+| `mcp-gateway` | `http://127.0.0.1:3005/health` | 200/401/404/405 | adopted: AI-DEMO2 `ai-demo-mcp-gateway` (the Node MCP gateway) |
+| `mcp-resource-server` | `http://127.0.0.1:8081/` (loopback-only) | 200/401/404/405 | adopted: AI-DEMO2 `ai-demo-mcp-resource-server` (token-protected API) |
+| `mcp-jwt-verifier` | `http://127.0.0.1:8083/health` | 200/401/404/405 | adopted: AI-DEMO2 `ai-demo-mcp-jwt-verifier` |
+| `api-resource-server` | `http://127.0.0.1:8082/health` | 200/401/404/405 | adopted: AI-DEMO2 `ai-demo-api-resource-server` (the banking API) |
+| `authz-server` | `http://127.0.0.1:9001/health` | 200/401/404/405 | adopted: AI-DEMO2 `ai-demo-authz-server` |
+| `mcp-proxy` | `http://127.0.0.1:8895/` | 200/401/404/405 | adopted: AI-DEMO2 `ai-demo-mcp-proxy` |
+| `mcp-audit` | `http://127.0.0.1:8898/` | 200/401/404/405 | adopted: AI-DEMO2 `ai-demo-mcp-audit` |
+| `llm-proxy` | `http://127.0.0.1:8090/health` | 200/401/404/405 | adopted: AI-DEMO2 `ai-demo-llm-proxy` (shared local model endpoint) |
+| `mcp-code-search` | `http://127.0.0.1:8095/` | 200/401/404/405 | adopted: AI-DEMO2 `ai-demo-mcp-code-search` |
+| `opensearch-mcp-server` | `http://127.0.0.1:9900/` | 200/401/404/405 | adopted: AI-DEMO2 `ai-demo-opensearch-mcp-server` (profile `mcpgw`) |
+| `mcp-weather` | `http://127.0.0.1:8896/` | 200/401/404/405 | adopted: AI-DEMO2 `ai-demo-mcp-weather` |
+| `mcp-brave` | `http://127.0.0.1:8897/` | 200/401/404/405 | adopted: AI-DEMO2 `ai-demo-mcp-brave` |
+| `bff` | `https://local.ping-devops.com:3001/api/health` | 200 | adopted: AI-DEMO2 `ai-demo-api-server` (session custodian; TLS at the container) |
 
 Probe exit codes: 0 = shared and healthy ("using shared <product> at …"),
 1 = missing or unhealthy (offer to start, never silently), 2 = unknown product.
