@@ -15,6 +15,12 @@ const HEALTH = {
     port: 9031,
     ok: [200],
   },
+  'cimd-doc-server': {
+    container: 'ping-shared-cimd-doc-server-1',
+    url: 'http://127.0.0.1:5252/api/health',
+    port: 5252,
+    ok: [200],
+  },
   pinggateway: {
     container: 'ai-demo-ping-gateway',
     url: 'https://127.0.0.1:3036/mcp',

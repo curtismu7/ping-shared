@@ -42,3 +42,19 @@ services:
     labels:
       io.ping-shared.product: mock-mcp-server
     restart: unless-stopped
+
+  # ── Shared CIMD document server (always on; loopback + lab-proxy hosts) ─────
+  # Serves Client ID Metadata Documents at https://local.ping-devops.com:8443
+  # (lab-proxy) and 127.0.0.1:5252, standing in for the public client.dev.
+  cimd-doc-server:
+    build: ../cimd-doc-server
+    init: true
+    ports:
+      - "127.0.0.1:5252:5252"
+    environment:
+      PORT: "5252"
+      ALLOWED_HOSTS: "127.0.0.1,localhost,local.ping-devops.com,cimd-doc-server"
+    networks: [ping-shared]
+    labels:
+      io.ping-shared.product: cimd-doc-server
+    restart: unless-stopped

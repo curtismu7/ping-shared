@@ -75,3 +75,10 @@ networks:
 Each lab's `docs/shelf-entry.json` (and the shelf registry entry) declares
 `pingProducts: []` — the probe names above. The shelf warns on a card whose
 products are not shared-and-healthy.
+
+## cimd-doc-server (port 5252)
+Shared CIMD Client ID Metadata Document publisher standing in for the public
+`https://client.dev/oauth/metadata.json`. Source: `../cimd-doc-server`. Labs
+point PingFederate CIMD policies at `http://cimd-doc-server:5252/...` (from the
+shared Docker network) or `https://local.ping-devops.com:8443` (via lab-proxy).
+Health: `GET /api/health` → `demo-health/1`. See that folder's README.
