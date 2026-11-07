@@ -34,3 +34,12 @@ jobs:
           node probe.mjs 2>/dev/null && { echo "missing product should not exit 0"; exit 1; } || code=$?
           test "$code" = "2" || { echo "expected exit 2 for missing product, got $code"; exit 1; }
           echo "probe contract ok"
+
+  no-ai-attribution:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: No AI attribution (tree and commits since 2026-11-07)
+        run: bash scripts/check-no-ai-attribution.sh
