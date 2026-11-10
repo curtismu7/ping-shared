@@ -1,0 +1,22 @@
+{
+  "name": "mcp",
+  "comment": "The one MCP route: check the bearer token against the issuer's JWKS, then proxy to GATEWAY_BACKEND_URL. Nothing else is exposed; any other path is a 404 from the router. baseURI is set on the route, not inside ReverseProxyHandler: the inline form fails with 502 on this image.",
+  "baseURI": "${env['GATEWAY_BACKEND_URL']}",
+  "condition": "${find(request.uri.path, '^/mcp(/|$)')}",
+  "handler": {
+    "type": "Chain",
+    "config": {
+      "filters": [
+        {
+          "name": "JwksTokenCheck",
+          "type": "ScriptableFilter",
+          "config": {
+            "type": "application/x-groovy",
+            "file": "jwks-token-check.groovy"
+          }
+        }
+      ],
+      "handler": "ReverseProxyHandler"
+    }
+  }
+}

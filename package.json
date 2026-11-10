@@ -1,0 +1,12 @@
+{
+  "name": "ping-shared",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared Ping products for the standalone labs (rule 20): PingFederate, a minimal PingGateway, the CIMD document server.",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "e2e:gateway": "bash test/e2e-gateway.sh"
+  },
+  "engines": { "node": ">=26" }
+}

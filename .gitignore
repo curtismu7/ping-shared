@@ -1,0 +1,6 @@
+.env
+*.lic
+*.pem
+*.p12
+*.key
+node_modules/
