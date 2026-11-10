@@ -35,6 +35,23 @@ jobs:
           test "$code" = "2" || { echo "expected exit 2 for missing product, got $code"; exit 1; }
           echo "probe contract ok"
 
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: 26 }
+      - name: Probe, compose, gateway config and script tests
+        run: npm test
+
+  gateway-e2e:
+    # The real PingGateway container from the compose service, against a fake JWKS issuer and backend.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Token cases through the real gateway
+        run: bash test/e2e-gateway.sh
+
   no-ai-attribution:
     runs-on: ubuntu-latest
     steps:

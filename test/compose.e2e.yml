@@ -1,0 +1,9 @@
+# Test-only overlay for test/e2e-gateway.sh: its own network and container names, no published ports, so a real
+# ping-shared on the same Docker host is never touched.
+services:
+  pinggateway:
+    container_name: psgw-e2e-gateway
+    ports: !reset []
+networks:
+  ping-shared:
+    name: psgw-e2e-net

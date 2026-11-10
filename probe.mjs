@@ -1,202 +1,109 @@
 #!/usr/bin/env node
-// Rule 20 probe: is a shared product available? Exit 0 = reuse, 1 = missing/unhealthy, 2 = unknown product.
-// Usage: node probe.mjs <product>
-// Products are "shared and healthy" when the container is up AND its health endpoint answers.
-// Accepted statuses per product: some endpoints answer 200, others 401 (auth required = up).
+// Rule 20 probe: is a shared product available? It names only what ping-shared owns:
+// its own containers, the PingFederate on 4732, and an optional SE PingFederate URL.
+//
+//   node probe.mjs <product>     exit 0 = reuse ("using shared <product> at ..."), 1 = missing/unhealthy, 2 = unknown product
+//   node probe.mjs --all         one line per product; exit 0 always (a status table, not a gate)
+//
+// A product is healthy when its container is up AND its health endpoint answers an accepted status.
+// "Missing" = no container (and nothing else answering where one would be); "unhealthy" = up but not answering.
 import { execFileSync } from 'node:child_process';
-import https from 'node:https';
 import http from 'node:http';
-import fs from 'node:fs';
+import https from 'node:https';
+import { pathToFileURL } from 'node:url';
 
-const HEALTH = {
+export const PRODUCTS = {
   pingfederate: {
-    container: 'ai-demo-pingfederate',
-    url: 'https://127.0.0.1:9031/pf/heartbeat.ping',
-    port: 9031,
+    // id-jag-kit-pf is the name scripts/pingfederate-setup.sh and this compose project both use. Any PingFederate
+    // that answers on 4732 is reused (one instance per host), whoever started it.
+    containers: ['id-jag-kit-pf'],
+    adoptIfAnswering: true,
+    url: 'https://127.0.0.1:4732/pf/heartbeat.ping',
     ok: [200],
-  },
-  'cimd-doc-server': {
-    container: 'ping-shared-cimd-doc-server-1',
-    url: 'http://127.0.0.1:5252/api/health',
-    port: 5252,
-    ok: [200],
+    startHint: 'scripts/ping-shared.sh up pingfederate (needs a licence file; it explains)',
   },
   pinggateway: {
-    container: 'ai-demo-ping-gateway',
-    url: 'https://127.0.0.1:3036/mcp',
-    port: 3036,
-    // 401 = the enforcement point is up and asking for auth; that is healthy.
-    ok: [200, 401, 405],
-  },
-  'privilege-gateway': {
-    // The Privilege Agent Gateway (ping-mcpgw / procyon). Its MCP listener on
-    // 8623 answers 200 with the MCP server page; 8620/8690 need auth or nothing.
-    container: 'ai-demo-ping-mcpgw',
-    url: 'http://127.0.0.1:8623/',
-    port: 8623,
+    containers: ['ping-shared-pinggateway'],
+    url: 'http://127.0.0.1:7809/health',
     ok: [200],
-  },
-  // pingone is SaaS: no container. Health = the environment answers a discovery
-  // request; the environment id comes from the shared env file (rule 94).
-  pingone: {
-    container: null,
-    env: ['PINGONE_ENVIRONMENT_ID', 'PINGONE_REGION'],
-    urlFromEnv: (env) => {
-      const id = env.PINGONE_ENVIRONMENT_ID;
-      if (!id) return null;
-      // Region aliases per the family convention: na/us map to com (pingone-lab settings.js).
-      const ALIAS = { na: 'com', us: 'com', com: 'com', eu: 'eu', ca: 'ca', ap: 'asia', asia: 'asia', au: 'asia' };
-      const region = ALIAS[String(env.PINGONE_REGION || 'com').toLowerCase()] || 'com';
-      return `https://auth.pingone.${region}/${id}/as/.well-known/openid-configuration`;
+    startHint: 'scripts/ping-shared.sh up pinggateway (needs GATEWAY_ISSUER and GATEWAY_AUDIENCE in ping-shared/.env)',
+    // /health also says whether the token check has its settings.
+    note: (body) => {
+      try { return JSON.parse(body).tokenCheck === 'configured' ? '' : 'token check NOT configured: /mcp denies everything until GATEWAY_ISSUER and GATEWAY_AUDIENCE are set'; } catch { return ''; }
     },
+  },
+  'cimd-doc-server': {
+    containers: ['ping-shared-cimd-doc-server-1'],
+    url: 'http://127.0.0.1:5252/api/health',
     ok: [200],
+    startHint: 'docker compose up -d in shared/ping-shared',
   },
-  // PingOne Privilege (SaaS console). The URL comes from the shared env file:
-  // PRIVILEGE_CONSOLE_URL (default: the public console host). Users point at
-  // their own tenant; ping-shared never ships the console.
-  'pingone-privilege': {
-    container: null,
-    env: ['PRIVILEGE_CONSOLE_URL'],
-    urlFromEnv: (env) => env.PRIVILEGE_CONSOLE_URL || 'https://console.privilege.pingone.com/',
-    ok: [200, 302, 401, 403],
-  },
-  // ── AI-DEMO2 MCP / resource-server stack (rule 20: adopted, never re-spawned) ──
-  // These are enforcement/data-plane services another demo may already run. Any HTTP answer
-  // (200/401/404/405) proves the endpoint is up; auth challenges are healthy by definition.
-  'mcp-server': {
-    container: 'ai-demo-mcp-server',
-    url: 'http://127.0.0.1:8080/',
-    port: 8080,
-    ok: [200, 401, 404, 405],
-  },
-  'mcp-gateway': {
-    container: 'ai-demo-mcp-gateway',
-    url: 'http://127.0.0.1:3005/health',
-    port: 3005,
-    ok: [200, 401, 404, 405],
-  },
-  'mcp-resource-server': {
-    // Loopback-only publish; the token-protected API for the MCP tool calls.
-    container: 'ai-demo-mcp-resource-server',
-    url: 'http://127.0.0.1:8081/',
-    port: 8081,
-    ok: [200, 401, 404, 405],
-  },
-  'mcp-jwt-verifier': {
-    container: 'ai-demo-mcp-jwt-verifier',
-    url: 'http://127.0.0.1:8083/health',
-    port: 8083,
-    ok: [200, 401, 404, 405],
-  },
-  'api-resource-server': {
-    // The banking API the demos call (loopback 8082).
-    container: 'ai-demo-api-resource-server',
-    url: 'http://127.0.0.1:8082/health',
-    port: 8082,
-    ok: [200, 401, 404, 405],
-  },
-  'authz-server': {
-    container: 'ai-demo-authz-server',
-    url: 'http://127.0.0.1:9001/health',
-    port: 9001,
-    ok: [200, 401, 404, 405],
-  },
-  'mcp-proxy': {
-    container: 'ai-demo-mcp-proxy',
-    url: 'http://127.0.0.1:8895/',
-    port: 8895,
-    ok: [200, 401, 404, 405],
-  },
-  'mcp-audit': {
-    container: 'ai-demo-mcp-audit',
-    url: 'http://127.0.0.1:8898/',
-    port: 8898,
-    ok: [200, 401, 404, 405],
-  },
-  'llm-proxy': {
-    // The local LLM proxy: a shared model endpoint for any lab's Real mode.
-    container: 'ai-demo-llm-proxy',
-    url: 'http://127.0.0.1:8090/health',
-    port: 8090,
-    ok: [200, 401, 404, 405],
-  },
-  'mcp-code-search': {
-    container: 'ai-demo-mcp-code-search',
-    url: 'http://127.0.0.1:8095/',
-    port: 8095,
-    ok: [200, 401, 404, 405],
-  },
-  'opensearch-mcp-server': {
-    container: 'ai-demo-opensearch-mcp-server',
-    url: 'http://127.0.0.1:9900/',
-    port: 9900,
-    ok: [200, 401, 404, 405],
-  },
-  'mcp-weather': {
-    container: 'ai-demo-mcp-weather',
-    url: 'http://127.0.0.1:8896/',
-    port: 8896,
-    ok: [200, 401, 404, 405],
-  },
-  'mcp-brave': {
-    container: 'ai-demo-mcp-brave',
-    url: 'http://127.0.0.1:8897/',
-    port: 8897,
-    ok: [200, 401, 404, 405],
-  },
-  'bff': {
-    // The BFF (demo_api_server): session custodian and OAuth client for the demo UI.
-    // TLS-terminated at the container (https on 3001; plain http answers nothing).
-    container: 'ai-demo-api-server',
-    url: 'https://local.ping-devops.com:3001/api/health',
-    port: 3001,
+  // Optional: a PingFederate on the US SE cluster, for anyone who has no local licence. The URL is YOUR setting
+  // (PING_SHARED_SE_PF_URL, a .../pf/heartbeat.ping URL); nothing is built in.
+  'pingfederate-se': {
+    containers: [],
+    urlFromEnv: (env) => env.PING_SHARED_SE_PF_URL || null,
     ok: [200],
+    startHint: 'set PING_SHARED_SE_PF_URL to the SE heartbeat URL',
   },
 };
 
-function get(url) {
+export function get(url, { timeout = 3000 } = {}) {
   const mod = url.startsWith('https:') ? https : http;
   return new Promise((resolve) => {
-    const req = mod.get(url, { rejectUnauthorized: false, timeout: 3000 }, (res) => { res.resume(); resolve(res.statusCode); });
-    req.on('timeout', () => { req.destroy(); resolve(0); });
-    req.on('error', () => resolve(0));
+    const req = mod.get(url, { rejectUnauthorized: false, timeout }, (res) => {
+      let body = '';
+      res.on('data', (c) => { if (body.length < 4096) body += c; });
+      res.on('end', () => resolve({ status: res.statusCode, body }));
+    });
+    req.on('timeout', () => { req.destroy(); resolve({ status: 0, body: '' }); });
+    req.on('error', () => resolve({ status: 0, body: '' }));
   });
 }
 
-function loadSharedEnv() {
-  // Rule 94: the family's one shared settings file, ~/Development/.env.
-  const path = `${process.env.HOME}/Development/.env`;
-  const env = { ...process.env };
+// Names of the running containers (current Docker context). Docker missing or stopped: nothing is running.
+export function runningContainers(exec = execFileSync) {
   try {
-    const text = fs.readFileSync(path, 'utf8');
-    for (const line of text.split('\n')) {
-      const m = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
-      if (m && !(m[1] in env)) env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+    return new Set(exec('docker', ['ps', '--format', '{{.Names}}'], { encoding: 'utf8', timeout: 8000 }).split('\n').map((s) => s.trim()).filter(Boolean));
+  } catch { return new Set(); }
+}
+
+// -> { state: 'healthy'|'unhealthy'|'missing'|'unconfigured', exit, message }
+export async function checkProduct(name, { env = process.env, fetcher = get, running = runningContainers() } = {}) {
+  const def = PRODUCTS[name];
+  if (!def) return { state: 'unknown', exit: 2, message: `unknown product ${name}` };
+  const url = def.urlFromEnv ? def.urlFromEnv(env) : def.url;
+  if (!url) return { state: 'unconfigured', exit: 1, message: `${name}: not configured; ${def.startHint}` };
+  const up = def.containers.length === 0 || def.containers.some((c) => running.has(c));
+  const { status, body } = await fetcher(url);
+  const answers = def.ok.includes(status);
+  const at = url.replace(/^[a-z]+:\/\/127\.0\.0\.1:/, '127.0.0.1:').replace(/^[a-z]+:\/\//, '').replace(/\/.*$/, '');
+  if (up && answers) {
+    const extra = def.note ? def.note(body) : '';
+    return { state: 'healthy', exit: 0, message: `using shared ${name} at ${at}${extra ? ` (${extra})` : ''}` };
+  }
+  if (!up && answers && def.adoptIfAnswering) {
+    return { state: 'healthy', exit: 0, message: `using shared ${name} at ${at} (answering; not started by ping-shared)` };
+  }
+  if (up) return { state: 'unhealthy', exit: 1, message: `shared ${name} is up but not healthy (${url}, status ${status})` };
+  return { state: 'missing', exit: 1, message: `no shared ${name}; offer to start it (never silently): ${def.startHint}` };
+}
+
+async function main(argv) {
+  const arg = argv[2];
+  if (arg === '--all') {
+    const running = runningContainers();
+    for (const name of Object.keys(PRODUCTS)) {
+      const r = await checkProduct(name, { running });
+      console.log(`${name.padEnd(16)} ${r.state.padEnd(12)} ${r.message}`);
     }
-  } catch { /* no shared env file: pingone probe reports not configured */ }
-  return env;
+    return 0;
+  }
+  const r = await checkProduct(arg);
+  (r.exit === 0 ? console.log : console.error)(r.message);
+  return r.exit;
 }
 
-const name = process.argv[2];
-const def = HEALTH[name];
-if (!def) { console.error(`unknown product ${name}`); process.exit(2); }
-
-const env = loadSharedEnv();
-const url = def.urlFromEnv ? def.urlFromEnv(env) : def.url;
-if (!url) { console.error(`${name}: not configured in the shared env file (~/Development/.env)`); process.exit(1); }
-
-function containerUp() {
-  if (!def.container) return true;
-  try {
-    const st = execFileSync('docker', ['--context', 'orbstack', 'ps', '-a', '--filter', `name=^${def.container}$`, '--format', '{{.Status}}'], { encoding: 'utf8' }).trim();
-    return st.startsWith('Up');
-  } catch { return false; }
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  process.exit(await main(process.argv));
 }
-
-const up = containerUp();
-const code = await get(url);
-const ok = def.ok.includes(code);
-if (up && ok) { console.log(`using shared ${name} at ${url.replace(/^[a-z]+:\/\/127\.0\.0\.1:/, '127.0.0.1:')}`); process.exit(0); }
-if (up) { console.error(`shared ${name} container is up but not healthy (${url}, status ${code})`); process.exit(1); }
-console.error(`no shared ${name}; offer to start it (never silently)`);
-process.exit(1);

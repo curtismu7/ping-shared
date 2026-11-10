@@ -1,26 +1,25 @@
-# ping-shared — one shared instance per host of the Ping products and demo
-# services that standalones need (rule 20 in ~/Development/STANDALONE-RULES.md).
-# Labs join the external `ping-shared` network and reuse these instances; they
-# never ship their own.
+# ping-shared: one shared instance per host of the Ping products and demo services that
+# standalones need (rule 20 in ~/Development/STANDALONE-RULES.md). Labs join the external
+# `ping-shared` network and reuse these instances; they never ship their own.
 #
-# Adopted (already running, not owned by this compose project):
-#   Ping products:  ai-demo-pingfederate (admin 9999, runtime 9031), ai-demo-ping-gateway
-#                   (3036), ai-demo-ping-mcpgw (8620/8623/8690, profile `mcpgw`)
-#   MCP stack:      ai-demo-mcp-server (8080), mcp-gateway (3005), mcp-resource-server
-#                   (8081, loopback), mcp-jwt-verifier (8083), api-resource-server (8082),
-#                   authz-server (9001), mcp-proxy (8895), mcp-audit (8898), llm-proxy
-#                   (8090), mcp-code-search (8095), opensearch-mcp-server (9900),
-#                   mcp-weather (8896), mcp-brave (8897), bff/api-server (3001, TLS)
-#   All from the AI-DEMO2 compose project. This project does NOT start seconds of them.
+# This project OWNS everything it runs. Nothing here comes from, or depends on, another
+# project's containers (owner rule 2026-11-10: standalone demos never rely on AI-DEMO2).
 #
-# Probe convention (rule 20 step 2): `node probe.mjs <product>` → exit 0 = reuse
+#   cimd-doc-server  always on                 127.0.0.1:5252
+#   pingfederate     profile `pingfederate`    127.0.0.1:4731 (admin) / 4732 (engine)
+#   pinggateway      profile `pinggateway`     127.0.0.1:7809 (minimal: a JWKS token check + one MCP route)
+#
+# Start the profiled products through the wrapper, which does the checks compose cannot:
+#   scripts/ping-shared.sh up pingfederate      licence file, terms, one instance per host
+#   scripts/ping-shared.sh up pinggateway       needs GATEWAY_ISSUER / GATEWAY_AUDIENCE in ./.env
+#   scripts/ping-shared.sh status               probe every product
+#
+# Probe convention (rule 20 step 2): `node probe.mjs <product>` exit 0 = reuse
 # ("using shared <product> at <host:port>"), 1 = missing/unhealthy (offer to start,
 # never silently), 2 = unknown product.
 #
-# Fallback (OFF by default): a host with NO AI-DEMO2 stack can start the MCP trio
-# here with `docker compose --profile fallback up -d` — minimal mock MCP server +
-# resource server so a lab's Real-ish mode still has peers. Do NOT enable this on
-# a host that already runs the AI-DEMO2 stack (that would violate rule 20).
+# Settings: ./.env beside this file (see .env.example). The PingFederate licence is read
+# from ~/.config/demo-kit/pingfederate.lic and is never copied into a repo.
 
 name: ping-shared
 
@@ -30,20 +29,76 @@ networks:
     external: false
 
 services:
-  # ── Fallback MCP pair (profile `fallback`, OFF by default) ──────────────────
-  # Only for hosts with no AI-DEMO2 stack. Minimal, mock, loopback-only.
-  mock-mcp-server:
-    image: busybox:1.36
-    profiles: ["fallback"]
-    command: ["httpd", "-f", "-p", "8080", "-h", "/www"]
+  # -- PingFederate (profile `pingfederate`) ----------------------------------
+  # The same install the parent repo's scripts/pingfederate-setup.sh makes: the public image,
+  # Ping's public getting-started server profile, loopback only. ONE instance per host: the wrapper
+  # reuses a PingFederate that already answers on 4732, so this never becomes a second container.
+  # The licence is mounted read-only from the config dir. With no licence file the start FAILS
+  # (create_host_path: false stops Docker inventing an empty directory there).
+  # The image's terms are accepted only when the user typed YES (wrapper) or set PF_ACCEPT_EULA=YES.
+  pingfederate:
+    image: ${PF_IMAGE:-pingidentity/pingfederate:13.1.3-latest}
+    container_name: id-jag-kit-pf
+    profiles: ["pingfederate"]
     ports:
-      - "127.0.0.1:18080:8080"
+      - "127.0.0.1:4731:9999"
+      - "127.0.0.1:4732:9031"
+    environment:
+      PING_IDENTITY_ACCEPT_EULA: ${PF_ACCEPT_EULA:-NO}
+      ROOT_USER: administrator
+      # The official image's documented default login; change it for anything beyond local use.
+      PING_IDENTITY_PASSWORD: 2FederateM0re
+      SERVER_PROFILE_URL: https://github.com/pingidentity/pingidentity-server-profiles.git
+      SERVER_PROFILE_PATH: getting-started/pingfederate
+    volumes:
+      - type: bind
+        source: ${PF_LICENSE_FILE:-${HOME}/.config/demo-kit/pingfederate.lic}
+        target: /opt/out/instance/server/default/conf/pingfederate.lic
+        read_only: true
+        bind:
+          create_host_path: false
     networks: [ping-shared]
     labels:
-      io.ping-shared.product: mock-mcp-server
+      io.ping-shared.product: pingfederate
+      io.ping-shared.health: /pf/heartbeat.ping
     restart: unless-stopped
 
-  # ── Shared CIMD document server (always on; loopback + lab-proxy hosts) ─────
+  # -- PingGateway, minimal (profile `pinggateway`) ---------------------------
+  # Public Ping IG image, pinned by digest (the `latest` tag on 2026-11-10). Config is the cut-down
+  # ./pinggateway/config: /health plus ONE route, /mcp, which checks the bearer token's signature,
+  # issuer and audience against the issuer's JWKS and proxies to GATEWAY_BACKEND_URL.
+  # See README "PingGateway: what it does and does not do".
+  pinggateway:
+    image: us-docker.pkg.dev/forgeops-public/images-base/ig@sha256:5deece1455a791e31cf04d8cf663360d079921ac38980402580ecfd9929d11bc
+    container_name: ping-shared-pinggateway
+    profiles: ["pinggateway"]
+    # A stale tmp pid file from an unclean stop makes start.sh refuse to boot; clear it, then run the stock launcher.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - rm -f "$${IG_INSTANCE_DIR}/tmp/"*.pid 2>/dev/null || true; exec "$${INSTALL_DIR}/bin/start.sh" "$${IG_INSTANCE_DIR}"
+    ports:
+      - "127.0.0.1:${PINGGATEWAY_HOST_PORT:-7809}:8080"
+    environment:
+      GATEWAY_ISSUER: ${GATEWAY_ISSUER:-}
+      GATEWAY_AUDIENCE: ${GATEWAY_AUDIENCE:-}
+      GATEWAY_JWKS_URI: ${GATEWAY_JWKS_URI:-}
+      GATEWAY_REQUIRED_SCOPE: ${GATEWAY_REQUIRED_SCOPE:-}
+      # Default: mcp-resource-server-LAB, published on this machine at 127.0.0.1:8081.
+      GATEWAY_BACKEND_URL: ${GATEWAY_BACKEND_URL:-http://host.docker.internal:8081}
+    volumes:
+      # Directories, not single files: IG's route watcher unloads routes when a per-file bind mount moves.
+      - ./pinggateway/config:/var/gateway/config:ro
+      - ./pinggateway/scripts/groovy:/var/gateway/scripts/groovy:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks: [ping-shared]
+    labels:
+      io.ping-shared.product: pinggateway
+      io.ping-shared.health: /health
+    restart: unless-stopped
+
+  # -- Shared CIMD document server (always on; loopback + lab-proxy hosts) -----
   # Serves Client ID Metadata Documents at https://local.ping-devops.com:8443
   # (lab-proxy) and 127.0.0.1:5252, standing in for the public client.dev.
   cimd-doc-server:

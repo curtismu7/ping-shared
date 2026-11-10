@@ -1,0 +1,12 @@
+{
+  "name": "health",
+  "comment": "Liveness plus one honest field: whether the token check has its settings. No secrets, no upstream call.",
+  "condition": "${find(request.uri.path, '^/health$')}",
+  "handler": {
+    "type": "ScriptableHandler",
+    "config": {
+      "type": "application/x-groovy",
+      "file": "health.groovy"
+    }
+  }
+}
