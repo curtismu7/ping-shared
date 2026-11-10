@@ -138,9 +138,9 @@ settings. Add a row to the tables above, an entry in `probe.mjs` and its tests. 
 
 ## Tests
 
-`npm test` (Node 26, 45 tests, no Docker needed except the optional `docker compose config` render):
+`npm test` (Node 26, 44 tests, no Docker needed except the optional `docker compose config` render):
 probe states per service, the compose file (no `ai-demo` names, licence read-only from the config dir, loopback
 ports, EULA default NO), the gateway config (no AI-DEMO2 identifiers, no secrets, fail-closed check), and the
-`scripts/ping-shared.sh` bootstrap behaviour (no licence, licence without terms, reuse, dry-run).
+`scripts/ping-shared.sh` behaviour (no licence, licence without terms, reuse, dry-run).
 `npm run e2e:gateway` runs the real PingGateway container against a fake issuer (needs Docker; on the
 owner's Mac run it on the Air: `air-test . -- 'bash test/e2e-gateway.sh'`).

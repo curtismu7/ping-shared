@@ -5,7 +5,9 @@
 #   scripts/ping-shared.sh up pingfederate    reuse a healthy PingFederate, else start ours (needs the licence file)
 #   scripts/ping-shared.sh up pinggateway     start the minimal PingGateway (needs GATEWAY_ISSUER + GATEWAY_AUDIENCE in ./.env)
 #   scripts/ping-shared.sh status             probe every product
-#   scripts/ping-shared.sh bootstrap [--dry-run]   what the parent repo's bootstrap runs: start what is ready, say plainly what is skipped
+#
+# Flags for `up`: --non-interactive (never prompt; without PF_ACCEPT_EULA=YES it stops and says so), --dry-run (print the
+# compose command instead of running it). The parent repo's bootstrap runs both products with both flags set as needed.
 #
 # Exit codes (up): 0 running (reused or started), 1 failed, 4 skipped: no PingFederate licence file,
 #   5 skipped: terms not accepted, 6 skipped: PingGateway not configured.
@@ -127,22 +129,6 @@ EOF
   return 1
 }
 
-# What the family setup runs after the always-on services: start what is ready, say plainly what is skipped.
-# Output is one "Product: message" block per product. Exit 0 unless something it tried to start failed.
-bootstrap() {
-  local dry=0 rc=0 r
-  [ "${1:-}" = "--dry-run" ] && dry=1
-  local flag=(--non-interactive); [ "$dry" = 1 ] && flag+=(--dry-run)
-
-  echo "PingFederate:"
-  up_pingfederate "${flag[@]}" 2>&1 | sed 's/^/  /'; r="${PIPESTATUS[0]}"
-  case "$r" in 0|4|5) ;; *) rc=1 ;; esac
-  echo "PingGateway:"
-  up_pinggateway "${flag[@]}" 2>&1 | sed 's/^/  /'; r="${PIPESTATUS[0]}"
-  case "$r" in 0|6) ;; *) rc=1 ;; esac
-  return "$rc"
-}
-
 case "${1:-}" in
   up)
     case "${2:-}" in
@@ -151,6 +137,5 @@ case "${1:-}" in
       *) echo "usage: $0 up pingfederate|pinggateway" >&2; exit 2 ;;
     esac ;;
   status) node "$root/probe.mjs" --all ;;
-  bootstrap) shift; bootstrap "$@"; exit $? ;;
-  *) echo "usage: $0 up pingfederate|pinggateway | status | bootstrap [--dry-run]" >&2; exit 2 ;;
+  *) echo "usage: $0 up pingfederate|pinggateway [--non-interactive] [--dry-run] | status" >&2; exit 2 ;;
 esac
